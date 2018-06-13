@@ -1,0 +1,36 @@
+#!/bin/sh
+# Run a vault dev server and configure that instance for the database
+
+
+# Capture the token defined in the environment and make it our dev server token so they match
+export VAULT_DEV_ROOT_TOKEN_ID=$VAULT_TOKEN
+
+# Start vault server and place in background
+vault server -dev &
+
+# Wait for server to start
+sleep 2
+
+echo "Enabling database plugin"
+vault secrets enable -path=dbs database
+
+echo "Adding postgres connection information"
+vault write dbs/config/mydb \
+  plugin_name=postgresql-database-plugin \
+  connection_url='postgresql://{{username}}:{{password}}@database:5432/mydb' \
+  allowed_roles=mydb-admin \
+  username="admin" \
+  password="secret" \
+  verify_connection=false
+
+echo "Adding admin role"
+vault write dbs/roles/mydb-admin \
+  db_name=mydb \
+  default_ttl=5m \
+  max_ttl=1h \
+  creation_statements="CREATE ROLE \"{{name}}\" WITH LOGIN PASSWORD '{{password}}' \
+                         VALID UNTIL '{{expiration}}'; \
+                         GRANT ALL PRIVILEGES ON ALL TABLES IN SCHEMA public TO \"{{name}}\";"
+
+# Wait for vault server to finish
+wait
